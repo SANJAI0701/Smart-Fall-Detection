@@ -1,0 +1,99 @@
+/*
+ * PROJECT: Smart Fall Detection System
+ * AUTHOR: [Your Name]
+ * HARDWARE: ESP32 + MPU6050
+ * * DESCRIPTION:
+ * Reads accelerometer data to detect high-impact forces indicative of a fall.
+ * Uses a "magnitude" threshold to trigger an alert state.
+ */
+
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+
+// --- HARDWARE CONFIGURATION ---
+#define BUZZER_PIN 15   // Pin for the alert buzzer
+#define LED_PIN 2       // Built-in LED on ESP32
+
+// --- FALL DETECTION THRESHOLDS ---
+// 1G = 9.8 m/s^2. 
+// A fall typically generates > 2.5G - 3G of force upon impact.
+const float FALL_THRESHOLD_G = 2.5; 
+const float LOW_THRESHOLD_G = 0.5; // Optional: Used to detect "free fall" before impact
+
+Adafruit_MPU6050 mpu;
+
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // Initialize MPU6050
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10); // Halt if sensor not found
+    }
+  }
+  
+  Serial.println("MPU6050 Found!");
+  
+  // Configure Sensor Range (2G, 4G, 8G, 16G)
+  // We use 8G because fall impacts can spike high
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+  Serial.println("System Armed. Waiting for events...");
+  delay(1000);
+}
+
+void loop() {
+  // 1. Get new sensor events with the readings
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  // 2. Calculate Total Acceleration Vector (Magnitude)
+  // Formula: sqrt(x^2 + y^2 + z^2)
+  // We divide by 9.8 to convert m/s^2 to G-force
+  float ax = a.acceleration.x;
+  float ay = a.acceleration.y;
+  float az = a.acceleration.z;
+  
+  float vectorMagnitude = sqrt(sq(ax) + sq(ay) + sq(az)) / 9.8;
+
+  // 3. Serial Plotter Debugging
+  // Open "Tools > Serial Plotter" to visualize this graph!
+  Serial.print("Magnitude:");
+  Serial.print(vectorMagnitude);
+  Serial.print(",");
+  Serial.print("Threshold:");
+  Serial.println(FALL_THRESHOLD_G);
+
+  // 4. Fall Detection Logic
+  if (vectorMagnitude > FALL_THRESHOLD_G) {
+    Serial.println("⚠️ POTENTIAL FALL DETECTED! (High Impact)");
+    triggerAlert();
+  }
+
+  delay(50); // Small delay for stability
+}
+
+// Function to handle the alert (Blink LED + Sound Alarm)
+void triggerAlert() {
+  // In a real device, we would check for "orientation" here 
+  // to ensure the user is lying down before alerting.
+  
+  for (int i = 0; i < 10; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(100);
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(100);
+  }
+  
+  Serial.println("Alert sequence finished. Resuming monitoring.");
+}
